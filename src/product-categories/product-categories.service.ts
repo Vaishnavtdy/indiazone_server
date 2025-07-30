@@ -5,6 +5,7 @@ import { Op } from 'sequelize';
 import { ProductCategory, ProductCategoryStatus } from '../database/models/product-category.model';
 import { CreateProductCategoryDto } from './dto/create-product-category.dto';
 import { UpdateProductCategoryDto } from './dto/update-product-category.dto';
+import { S3UploadService } from '../common/services/s3-upload.service';
 
 @Injectable()
 export class ProductCategoriesService {
@@ -12,9 +13,10 @@ export class ProductCategoriesService {
     @InjectModel(ProductCategory)
     private productCategoryModel: typeof ProductCategory,
     private sequelize: Sequelize,
+    private s3UploadService: S3UploadService,
   ) {}
 
-  async create(createProductCategoryDto: CreateProductCategoryDto): Promise<ProductCategory> {
+  async create(createProductCategoryDto: CreateProductCategoryDto, imageFile?: Express.Multer.File): Promise<ProductCategory> {
     const transaction = await this.sequelize.transaction();
     
     try {
@@ -41,7 +43,26 @@ export class ProductCategoriesService {
         }
       }
 
-      const category = await this.productCategoryModel.create({ ...createProductCategoryDto }, { transaction });
+      // Handle image upload if provided
+      let imageUrl: string | undefined;
+      if (imageFile) {
+        try {
+          imageUrl = await this.s3UploadService.uploadFile(
+            imageFile,
+            `uploads/product-categories/temp-${Date.now()}/images/${Date.now()}-${imageFile.originalname}`,
+            { makePublic: true }
+          );
+        } catch (error) {
+          throw new BadRequestException(`Failed to upload category image: ${error.message}`);
+        }
+      }
+
+      const categoryData = {
+        ...createProductCategoryDto,
+        ...(imageUrl && { image_url: imageUrl }),
+      };
+
+      const category = await this.productCategoryModel.create(categoryData, { transaction });
       
       await transaction.commit();
       return this.findOne(category.id);
@@ -112,7 +133,7 @@ export class ProductCategoriesService {
     return category;
   }
 
-  async update(id: number, updateProductCategoryDto: UpdateProductCategoryDto): Promise<ProductCategory> {
+  async update(id: number, updateProductCategoryDto: UpdateProductCategoryDto, imageFile?: Express.Multer.File): Promise<ProductCategory> {
     const transaction = await this.sequelize.transaction();
     
     try {
@@ -148,7 +169,33 @@ export class ProductCategoriesService {
         }
       }
 
-      await category.update(updateProductCategoryDto, { transaction });
+      // Handle image upload if provided
+      let imageUrl: string | undefined;
+      if (imageFile) {
+        try {
+          // Delete old image if exists
+          if (category.image_url) {
+            const oldImageKey = this.s3UploadService.extractKeyFromUrl(category.image_url);
+            await this.s3UploadService.deleteFile(oldImageKey);
+          }
+
+          // Upload new image
+          imageUrl = await this.s3UploadService.uploadFile(
+            imageFile,
+            `uploads/product-categories/${id}/images/${Date.now()}-${imageFile.originalname}`,
+            { makePublic: true }
+          );
+        } catch (error) {
+          throw new BadRequestException(`Failed to upload category image: ${error.message}`);
+        }
+      }
+
+      const updateData = {
+        ...updateProductCategoryDto,
+        ...(imageUrl && { image_url: imageUrl }),
+      };
+
+      await category.update(updateData, { transaction });
       
       await transaction.commit();
       return this.findOne(id);
@@ -180,6 +227,17 @@ export class ProductCategoriesService {
     try {
       const category = await this.findOne(id);
       
+      // Delete associated image from S3 if exists
+      if (category.image_url) {
+        try {
+          const imageKey = this.s3UploadService.extractKeyFromUrl(category.image_url);
+          await this.s3UploadService.deleteFile(imageKey);
+        } catch (error) {
+          console.error(`Failed to delete category image from S3: ${error.message}`);
+          // Continue with category deletion even if image deletion fails
+        }
+      }
+
       // Check if category has children
       const childrenCount = await this.productCategoryModel.count({
         where: { parent_id: id },

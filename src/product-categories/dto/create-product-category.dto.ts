@@ -46,6 +46,15 @@ export class CreateProductCategoryDto {
   units?: string;
 
   @ApiProperty({
+    description: 'Category image URL',
+    example: 'https://s3.amazonaws.com/bucket/category-image.jpg',
+    required: false,
+  })
+  @IsOptional()
+  @IsString()
+  image_url?: string;
+
+  @ApiProperty({
     description: 'Created by',
     enum: ProductCategoryCreatedBy,
     example: ProductCategoryCreatedBy.ADMIN,
