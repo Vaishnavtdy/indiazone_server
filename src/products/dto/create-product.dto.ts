@@ -15,7 +15,6 @@ export class CreateProductImageDto {
     description: 'Image URL',
     example: 'https://example.com/image.jpg',
   })
-  @IsUrl()
   image_url: string;
 
   @ApiProperty({

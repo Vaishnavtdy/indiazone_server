@@ -1,5 +1,5 @@
 // create-product-image.dto.ts
-import { IsString, IsOptional, IsBoolean, IsNumber, IsUrl } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsNumber } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateProductImageDto {
@@ -8,7 +8,6 @@ export class CreateProductImageDto {
     example: 'https://s3.amazonaws.com/bucket/image.jpg'
   })
   @IsString()
-  @IsUrl()
   image_url: string;
 
   @ApiProperty({

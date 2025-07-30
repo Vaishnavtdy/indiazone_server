@@ -55,9 +55,6 @@ export class ProductCategory extends Model {
   @Column({
     type: DataType.TEXT,
     allowNull: true,
-    validate: {
-      isUrl: true,
-    },
   })
   image_url: string;
 
