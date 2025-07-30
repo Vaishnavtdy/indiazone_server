@@ -36,6 +36,9 @@ export class BusinessTypesController {
     type: ErrorResponseDto,
   })
   create(@Body() createBusinessTypeDto: CreateBusinessTypeDto) {
+
+    console.log("createBusinessTypeDto ===>", createBusinessTypeDto);
+    
     return this.businessTypesService.create(createBusinessTypeDto);
   }
 
