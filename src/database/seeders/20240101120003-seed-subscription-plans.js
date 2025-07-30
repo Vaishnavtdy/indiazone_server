@@ -1,0 +1,108 @@
+'use strict';
+
+module.exports = {
+  async up(queryInterface, Sequelize) {
+    await queryInterface.bulkInsert('subscription_plans', [
+      {
+        name: 'Basic Plan',
+        product_limit: 10,
+        rfq_limit: 'Limited',
+        search_visibility: 'Normal',
+        micro_fair_priority: 'None',
+        trust_badge: 'Not Included',
+        verification: 'Included',
+        profile_page_type: 'Basic',
+        pdf_brochure: 'Not Available',
+        video_access: false,
+        whatsapp_chat: false,
+        ai_agent: 'Not Available',
+        price: 29.99,
+        duration_in_days: 30,
+        rfq_limited_vendor_count: 5,
+        rfq_medium_vendor_count: null,
+        rfq_high_vendor_count: null,
+        status: 'active',
+        created_by: null,
+        updated_by: null,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        name: 'Standard Plan',
+        product_limit: 50,
+        rfq_limit: 'Medium',
+        search_visibility: 'Enhanced',
+        micro_fair_priority: 'Medium',
+        trust_badge: 'Included',
+        verification: 'Included',
+        profile_page_type: 'Advanced',
+        pdf_brochure: 'Viewable',
+        video_access: true,
+        whatsapp_chat: true,
+        ai_agent: 'Available',
+        price: 79.99,
+        duration_in_days: 30,
+        rfq_limited_vendor_count: 10,
+        rfq_medium_vendor_count: 20,
+        rfq_high_vendor_count: null,
+        status: 'active',
+        created_by: null,
+        updated_by: null,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        name: 'Premium Plan',
+        product_limit: 200,
+        rfq_limit: 'Unlimited',
+        search_visibility: 'Top',
+        micro_fair_priority: 'High',
+        trust_badge: 'Mandatory',
+        verification: 'Strict',
+        profile_page_type: 'Fully Customized',
+        pdf_brochure: 'Downloadable',
+        video_access: true,
+        whatsapp_chat: true,
+        ai_agent: 'Included',
+        price: 199.99,
+        duration_in_days: 30,
+        rfq_limited_vendor_count: 25,
+        rfq_medium_vendor_count: 50,
+        rfq_high_vendor_count: 100,
+        status: 'active',
+        created_by: null,
+        updated_by: null,
+        created_at: new Date(),
+        updated_at: new Date()
+      },
+      {
+        name: 'Enterprise Plan',
+        product_limit: null,
+        rfq_limit: 'As Per Priority',
+        search_visibility: 'Sector Priority',
+        micro_fair_priority: 'Sector Priority',
+        trust_badge: 'Mandatory',
+        verification: 'Strict',
+        profile_page_type: 'Fully Customized',
+        pdf_brochure: 'Downloadable',
+        video_access: true,
+        whatsapp_chat: true,
+        ai_agent: 'Included',
+        price: 499.99,
+        duration_in_days: 30,
+        rfq_limited_vendor_count: 50,
+        rfq_medium_vendor_count: 100,
+        rfq_high_vendor_count: 200,
+        status: 'active',
+        created_by: null,
+        updated_by: null,
+        created_at: new Date(),
+        updated_at: new Date()
+      }
+    ], {});
+  },
+
+  async down(queryInterface, Sequelize) {
+    await queryInterface.bulkDelete('subscription_plans', null, {});
+  }
+};
