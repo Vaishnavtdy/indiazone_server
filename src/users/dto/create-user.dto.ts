@@ -15,6 +15,7 @@ export class CreateUserDto {
     description: 'AWS Cognito user ID',
     example: 'us-east-1:12345678-1234-1234-1234-123456789012',
   })
+  @IsOptional()
   @IsString()
   aws_cognito_id: string;
 

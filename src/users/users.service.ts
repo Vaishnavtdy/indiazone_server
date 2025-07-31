@@ -108,20 +108,17 @@ export class UsersService {
     try {
       // Validate input
       if (!this.isEmail(createAdminUserDto.email)) {
-        throw new BadRequestException("Invalid email format");
+        throw new ConflictException("Invalid email format");
       }
 
       if (!this.isPhoneNumber(createAdminUserDto.phone)) {
-        throw new BadRequestException("Invalid phone number format");
+        throw new ConflictException("Invalid phone number format");
       }
 
       // Check if user already exists in database
       const existingUser = await this.userModel.findOne({
         where: {
-          [Op.or]: [
-            { email: createAdminUserDto.email },
-            { phone: createAdminUserDto.phone }
-          ]
+          [Op.or]: [{ email: createAdminUserDto.email }, { phone: createAdminUserDto.phone }],
         },
       });
 
@@ -134,9 +131,7 @@ export class UsersService {
       }
 
       // Format phone number for Cognito
-      const formattedPhone = createAdminUserDto.phone.startsWith("+") 
-        ? createAdminUserDto.phone 
-        : `+${createAdminUserDto.phone}`;
+      const formattedPhone = createAdminUserDto.phone.startsWith("+") ? createAdminUserDto.phone : `+${createAdminUserDto.phone}`;
 
       // Create user in Cognito
       const cognitoParams: any = {
@@ -174,6 +169,9 @@ export class UsersService {
 
       const cognitoResult = await this.adminCognitoClient.signUp(cognitoParams).promise();
 
+      console.log("cognitoResult ===>", cognitoResult);
+      
+
       // Confirm user immediately (admin users don't need email verification)
       await this.adminCognitoClient
         .adminConfirmSignUp({
@@ -209,7 +207,8 @@ export class UsersService {
         created_by: 1, // System created
       };
 
-      const user = await this.userModel.create(createUserDto, { transaction });
+      // const user = await this.userModel.create(createUserDto, { transaction });
+      const user = await this.userModel.create(createUserDto as any, { transaction });
 
       await transaction.commit();
       return user;
@@ -220,13 +219,13 @@ export class UsersService {
       if (error.code === "UsernameExistsException") {
         throw new ConflictException("User with this email already exists in Cognito");
       } else if (error.code === "InvalidParameterException") {
-        throw new BadRequestException(`Invalid parameter: ${error.message}`);
+        throw new ConflictException(`Invalid parameter: ${error.message}`);
       } else if (error.code === "InvalidPasswordException") {
-        throw new BadRequestException("Password does not meet requirements");
+        throw new ConflictException("Password does not meet requirements");
       } else if (error.code === "NotAuthorizedException") {
-        throw new BadRequestException("Invalid security token or insufficient permissions");
+        throw new ConflictException("Invalid security token or insufficient permissions");
       } else if (error.code === "ResourceNotFoundException") {
-        throw new BadRequestException("Cognito User Pool not found - check configuration");
+        throw new ConflictException("Cognito User Pool not found - check configuration");
       }
 
       throw error;
