@@ -4,6 +4,7 @@ import { UsersService } from "./users.service";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
 import { UpdateUserStatusDto } from "./dto/update-user-status.dto";
+import { CreateAdminUserDto } from "./dto/create-admin-user.dto";
 import { CognitoAuthGuard } from "../auth/guards/cognito-auth.guard";
 import { ErrorResponseDto } from "../common/dto/error-response.dto";
 import { SuccessResponseDto } from "../common/dto/success-response.dto";
@@ -30,6 +31,20 @@ export class UsersController {
     });
   }
 
+  @Post('admin')
+  // @UseGuards(CognitoAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Create a new admin user' })
+  @ApiResponse({ status: 201, description: 'Admin user successfully created' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({
+    status: 409,
+    description: 'Admin user already exists',
+    type: ErrorResponseDto,
+  })
+  createAdmin(@Body() createAdminUserDto: CreateAdminUserDto) {
+    return this.usersService.createAdminUser(createAdminUserDto);
+  }
   @Get()
   // @UseGuards(CognitoAuthGuard)
   @ApiBearerAuth()

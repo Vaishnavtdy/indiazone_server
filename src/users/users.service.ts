@@ -2,20 +2,61 @@ import { Injectable, NotFoundException, ConflictException } from "@nestjs/common
 import { InjectModel } from "@nestjs/sequelize";
 import { Sequelize } from "sequelize-typescript";
 import { Op } from "sequelize";
+import { ConfigService } from "@nestjs/config";
+import { CognitoIdentityServiceProvider } from "aws-sdk";
+import * as crypto from "crypto";
 import { User, UserStatus } from "../database/models/user.model";
 import { VendorProfile } from "../database/models/vendor-profile.model";
 import { CreateUserDto } from "./dto/create-user.dto";
 import { UpdateUserDto } from "./dto/update-user.dto";
+import { CreateAdminUserDto } from "./dto/create-admin-user.dto";
+import { UserType } from "../database/models/user.model";
 
 @Injectable()
 export class UsersService {
+  private adminCognitoClient: CognitoIdentityServiceProvider;
+
   constructor(
     @InjectModel(User)
     private userModel: typeof User,
     @InjectModel(VendorProfile)
     private vendorProfileModel: typeof VendorProfile,
-    private sequelize: Sequelize
-  ) {}
+    private sequelize: Sequelize,
+    private configService: ConfigService
+  ) {
+    this.adminCognitoClient = new CognitoIdentityServiceProvider({
+      region: this.configService.get("AWS_REGION"),
+      accessKeyId: this.configService.get("AWS_ACCESS_KEY_ID"),
+      secretAccessKey: this.configService.get("AWS_SECRET_ACCESS_KEY"),
+    });
+  }
+
+  private getAdminUserPoolId(): string {
+    return this.configService.get("AWS_COGNITO_ADMIN_USER_POOL_ID");
+  }
+
+  private getAdminClientId(): string {
+    return this.configService.get("AWS_COGNITO_ADMIN_CLIENT_ID");
+  }
+
+  private generateAdminSecretHash(username: string): string {
+    const clientId = this.getAdminClientId();
+    const clientSecret = this.configService.get("AWS_COGNITO_ADMIN_CLIENT_SECRET");
+    return crypto
+      .createHmac("sha256", clientSecret)
+      .update(username + clientId)
+      .digest("base64");
+  }
+
+  private isEmail(email: string): boolean {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  private isPhoneNumber(phone: string): boolean {
+    const phoneRegex = /^\+?[1-9]\d{1,14}$/;
+    return phoneRegex.test(phone);
+  }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const transaction = await this.sequelize.transaction();
@@ -61,6 +102,136 @@ export class UsersService {
     }
   }
 
+  async createAdminUser(createAdminUserDto: CreateAdminUserDto): Promise<User> {
+    const transaction = await this.sequelize.transaction();
+
+    try {
+      // Validate input
+      if (!this.isEmail(createAdminUserDto.email)) {
+        throw new BadRequestException("Invalid email format");
+      }
+
+      if (!this.isPhoneNumber(createAdminUserDto.phone)) {
+        throw new BadRequestException("Invalid phone number format");
+      }
+
+      // Check if user already exists in database
+      const existingUser = await this.userModel.findOne({
+        where: {
+          [Op.or]: [
+            { email: createAdminUserDto.email },
+            { phone: createAdminUserDto.phone }
+          ]
+        },
+      });
+
+      if (existingUser) {
+        throw new ConflictException({
+          message: "User with this email or phone already exists",
+          fields: ["email", "phone"],
+          values: [createAdminUserDto.email, createAdminUserDto.phone],
+        });
+      }
+
+      // Format phone number for Cognito
+      const formattedPhone = createAdminUserDto.phone.startsWith("+") 
+        ? createAdminUserDto.phone 
+        : `+${createAdminUserDto.phone}`;
+
+      // Create user in Cognito
+      const cognitoParams: any = {
+        ClientId: this.getAdminClientId(),
+        Username: createAdminUserDto.email,
+        Password: createAdminUserDto.password,
+        UserAttributes: [
+          {
+            Name: "email",
+            Value: createAdminUserDto.email,
+          },
+          {
+            Name: "phone_number",
+            Value: formattedPhone,
+          },
+          {
+            Name: "given_name",
+            Value: createAdminUserDto.firstName,
+          },
+          {
+            Name: "family_name",
+            Value: createAdminUserDto.lastName,
+          },
+          {
+            Name: "custom:user_type",
+            Value: UserType.ADMIN,
+          },
+        ],
+      };
+
+      const secretHash = this.generateAdminSecretHash(createAdminUserDto.email);
+      if (secretHash) {
+        cognitoParams.SecretHash = secretHash;
+      }
+
+      const cognitoResult = await this.adminCognitoClient.signUp(cognitoParams).promise();
+
+      // Confirm user immediately (admin users don't need email verification)
+      await this.adminCognitoClient
+        .adminConfirmSignUp({
+          UserPoolId: this.getAdminUserPoolId(),
+          Username: createAdminUserDto.email,
+        })
+        .promise();
+
+      // Mark email as verified
+      await this.adminCognitoClient
+        .adminUpdateUserAttributes({
+          UserPoolId: this.getAdminUserPoolId(),
+          Username: createAdminUserDto.email,
+          UserAttributes: [
+            {
+              Name: "email_verified",
+              Value: "true",
+            },
+          ],
+        })
+        .promise();
+
+      // Create user in database
+      const createUserDto: CreateUserDto = {
+        type: UserType.ADMIN,
+        aws_cognito_id: cognitoResult.UserSub,
+        first_name: createAdminUserDto.firstName,
+        last_name: createAdminUserDto.lastName,
+        email: createAdminUserDto.email,
+        phone: formattedPhone,
+        is_verified: true,
+        verified_at: new Date(),
+        created_by: 1, // System created
+      };
+
+      const user = await this.userModel.create(createUserDto, { transaction });
+
+      await transaction.commit();
+      return user;
+    } catch (error) {
+      await transaction.rollback();
+
+      // Handle Cognito-specific errors
+      if (error.code === "UsernameExistsException") {
+        throw new ConflictException("User with this email already exists in Cognito");
+      } else if (error.code === "InvalidParameterException") {
+        throw new BadRequestException(`Invalid parameter: ${error.message}`);
+      } else if (error.code === "InvalidPasswordException") {
+        throw new BadRequestException("Password does not meet requirements");
+      } else if (error.code === "NotAuthorizedException") {
+        throw new BadRequestException("Invalid security token or insufficient permissions");
+      } else if (error.code === "ResourceNotFoundException") {
+        throw new BadRequestException("Cognito User Pool not found - check configuration");
+      }
+
+      throw error;
+    }
+  }
   async findAll(page: number = 1, limit: number = 10): Promise<{ users: User[]; total: number; pages: number }> {
     const offset = (page - 1) * limit;
 
